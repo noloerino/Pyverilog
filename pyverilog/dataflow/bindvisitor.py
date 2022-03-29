@@ -10,6 +10,7 @@
 
 from __future__ import absolute_import
 from __future__ import print_function
+from collections import defaultdict
 import sys
 import os
 import re
@@ -48,6 +49,13 @@ class BindVisitor(NodeVisitor):
 
         self.renamecnt = 0
         self.default_nettype = 'wire'
+
+        self._dftree_cache = defaultdict(dict) # Dict[Scope, Dict[Node, Term]]
+        """
+        Memoizes mappings of AST nodes to dataflow Term objects. Greatly improves performance.
+        (see makeDFTree for usage).
+        """
+
 
     def getDataflows(self):
         return self.dataflow
@@ -987,50 +995,57 @@ class BindVisitor(NodeVisitor):
         return tree
 
     def makeDFTree(self, node, scope):
+        if node in self._dftree_cache[scope]:
+            return self._dftree_cache[scope][node]
+
+        def _cache_term(term):
+            self._dftree_cache[scope][node] = term
+            return term
+
         if isinstance(node, str):
             name = self.searchTerminal(node, scope)
-            return DFTerminal(name)
+            return _cache_term(DFTerminal(name))
 
         if isinstance(node, Identifier):
             if node.scope is not None:
                 name = self.searchScopeTerminal(node.scope, node.name, scope)
                 if name is None:
                     raise verror.DefinitionError('No such signal: %s' % node.name)
-                return DFTerminal(name)
+                return _cache_term(_cache_term(DFTerminal(name)))
             name = self.searchTerminal(node.name, scope)
             if name is None:
                 raise verror.DefinitionError('No such signal: %s' % node.name)
-            return DFTerminal(name)
+            return _cache_term(DFTerminal(name))
 
         if isinstance(node, IntConst):
-            return DFIntConst(node.value)
+            return _cache_term(DFIntConst(node.value))
 
         if isinstance(node, FloatConst):
-            return DFFloatConst(node.value)
+            return _cache_term(DFFloatConst(node.value))
 
         if isinstance(node, StringConst):
-            return DFStringConst(node.value)
+            return _cache_term(DFStringConst(node.value))
 
         if isinstance(node, Cond):
             true_df = self.makeDFTree(node.true_value, scope)
             false_df = self.makeDFTree(node.false_value, scope)
             cond_df = self.makeDFTree(node.cond, scope)
             if isinstance(cond_df, DFBranch):
-                return reorder.insertCond(cond_df, true_df, false_df)
-            return DFBranch(cond_df, true_df, false_df)
+                return _cache_term(reorder.insertCond(cond_df, true_df, false_df))
+            return _cache_term(DFBranch(cond_df, true_df, false_df))
 
         if isinstance(node, UnaryOperator):
             right_df = self.makeDFTree(node.right, scope)
             if isinstance(right_df, DFBranch):
-                return reorder.insertUnaryOp(right_df, node.__class__.__name__)
-            return DFOperator((right_df,), node.__class__.__name__)
+                return _cache_term(reorder.insertUnaryOp(right_df, node.__class__.__name__))
+            return _cache_term(DFOperator((right_df,), node.__class__.__name__))
 
         if isinstance(node, Operator):
             left_df = self.makeDFTree(node.left, scope)
             right_df = self.makeDFTree(node.right, scope)
             if isinstance(left_df, DFBranch) or isinstance(right_df, DFBranch):
-                return reorder.insertOp(left_df, right_df, node.__class__.__name__)
-            return DFOperator((left_df, right_df,), node.__class__.__name__)
+                return _cache_term(reorder.insertOp(left_df, right_df, node.__class__.__name__))
+            return _cache_term(DFOperator((left_df, right_df,), node.__class__.__name__))
 
         if isinstance(node, Partselect):
             var_df = self.makeDFTree(node.var, scope)
@@ -1038,16 +1053,16 @@ class BindVisitor(NodeVisitor):
             lsb_df = self.makeDFTree(node.lsb, scope)
 
             if isinstance(var_df, DFBranch):
-                return reorder.insertPartselect(var_df, msb_df, lsb_df)
-            return DFPartselect(var_df, msb_df, lsb_df)
+                return _cache_term(reorder.insertPartselect(var_df, msb_df, lsb_df))
+            return _cache_term(DFPartselect(var_df, msb_df, lsb_df))
 
         if isinstance(node, Pointer):
             var_df = self.makeDFTree(node.var, scope)
             ptr_df = self.makeDFTree(node.ptr, scope)
 
             if isinstance(var_df, DFTerminal) and self.getTermDims(var_df.name) is not None:
-                return DFPointer(var_df, ptr_df)
-            return DFPartselect(var_df, ptr_df, copy.deepcopy(ptr_df))
+                return _cache_term(DFPointer(var_df, ptr_df))
+            return _cache_term(DFPartselect(var_df, ptr_df, copy.deepcopy(ptr_df)))
 
         if isinstance(node, Concat):
             nextnodes = []
@@ -1055,8 +1070,8 @@ class BindVisitor(NodeVisitor):
                 nextnodes.append(self.makeDFTree(n, scope))
             for n in nextnodes:
                 if isinstance(n, DFBranch):
-                    return reorder.insertConcat(tuple(nextnodes))
-            return DFConcat(tuple(nextnodes))
+                    return _cache_term(reorder.insertConcat(tuple(nextnodes)))
+            return _cache_term(DFConcat(tuple(nextnodes)))
 
         if isinstance(node, Repeat):
             nextnodes = []
@@ -1064,7 +1079,7 @@ class BindVisitor(NodeVisitor):
             value = self.makeDFTree(node.value, scope)
             for i in range(int(times)):
                 nextnodes.append(copy.deepcopy(value))
-            return DFConcat(tuple(nextnodes))
+            return _cache_term(DFConcat(tuple(nextnodes)))
 
         if isinstance(node, FunctionCall):
             func = self.searchFunction(node.name.name, scope)
@@ -1107,7 +1122,7 @@ class BindVisitor(NodeVisitor):
             self.frames.setCurrent(current)
             self.frames.setCurrent(save_current)
 
-            return DFTerminal(varname)
+            return _cache_term(DFTerminal(varname))
 
         if isinstance(node, TaskCall):
             task = self.searchTask(node.name.name, scope)
@@ -1140,14 +1155,14 @@ class BindVisitor(NodeVisitor):
 
             self.visit(taskargs)
             self.frames.setCurrent(current)
-            return DFTerminal(varname)
+            return _cache_term(DFTerminal(varname))
 
         if isinstance(node, SystemCall):
             if node.syscall == 'unsigned':
-                return self.makeDFTree(node.args[0], scope)
+                return _cache_term(self.makeDFTree(node.args[0], scope))
             if node.syscall == 'signed':
-                return self.makeDFTree(node.args[0], scope)
-            return DFIntConst('0')
+                return _cache_term(self.makeDFTree(node.args[0], scope))
+            return _cache_term(DFIntConst('0'))
 
         raise verror.FormatError("unsupported AST node type: %s %s" %
                                  (str(type(node)), str(node)))
