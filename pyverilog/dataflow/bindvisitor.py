@@ -1011,7 +1011,7 @@ class BindVisitor(NodeVisitor):
                 name = self.searchScopeTerminal(node.scope, node.name, scope)
                 if name is None:
                     raise verror.DefinitionError('No such signal: %s' % node.name)
-                return _cache_term(_cache_term(DFTerminal(name)))
+                return _cache_term(DFTerminal(name))
             name = self.searchTerminal(node.name, scope)
             if name is None:
                 raise verror.DefinitionError('No such signal: %s' % node.name)
