@@ -1889,14 +1889,14 @@ class VerilogParser(object):
         p[0] = (p[1],)
         p.set_lineno(0, p.lineno(1))
 
-    def p_instance_ports_list_empty(self, p):
-        'instance_ports_list : empty'
-        p[0] = ()
-        p.set_lineno(0, p.lineno(1))
-
     def p_instance_port_list(self, p):
         'instance_port_list : expression'
         p[0] = PortArg(None, p[1], lineno=p.lineno(1))
+        p.set_lineno(0, p.lineno(1))
+
+    def p_instnace_port_list_empty(self, p):
+        'instance_port_list : empty'
+        p[0] = ()
         p.set_lineno(0, p.lineno(1))
 
     def p_instance_ports_arg(self, p):
