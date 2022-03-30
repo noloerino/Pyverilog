@@ -68,27 +68,15 @@ class _ScopeTreeNode:
     def __init__(self, value: ScopeLabel, parent=None):
         self.value = value
         self.parent = parent # Parent _ScopeTreeNode
-        self._hash = None # memoized hash
         if parent is None:
+            self._hash = hash(value)
             self._len = 1
         else:
-            self._len = len(parent) + 1
-
-    def __len__(self):
-        return self._len
-
-    def __iter__(self):
-        # Unfortunately, the parent-facing nature of the tree pointers means we can't
-        # lazily produce an iterator
-        nodes = []
-        node = self
-        while node is not None:
-            nodes.append(node.value)
-            node = node.parent
-        return reversed(nodes)
+            self._hash = hash((parent._hash, value))
+            self._len = parent._len + 1
 
     def __eq__(self, other):
-        if not isinstance(other, _ScopeTreeNode):
+        if not isinstance(other, _ScopeTreeNode) or self._len != other._len or self._hash != other._hash:
             return False
         if id(self) == id(other):
             return True
@@ -99,35 +87,137 @@ class _ScopeTreeNode:
         return self.value == other.value and p1 == p2
 
     def __hash__(self):
-        if self._hash is not None:
-            return self._hash
-        self._hash = hash((self.parent, self.value))
         return self._hash
+
+class _ScopeTree:
+    """
+    Wraps a tree induced by _ScopeChainNodes.
+
+    `curr` represents the "leaf" node representing the current outermost scope.
+    `root` MUST be within the tree induced by `curr`, and represents the topmost
+    node (inclusive) that this scope represents. This allows us to efficiently
+    represent a slice of a ScopeChain.
+    """
+
+    def __init__(self, scopetree=None):
+        if scopetree is None:
+            self.root = None
+            self.curr = None
+            self._len = 0
+        else:
+            self.root = scopetree.root
+            self.curr = scopetree.curr
+            self._len = scopetree._len
+
+    def __len__(self):
+        return self._len
+
+    def __iter__(self):
+        # Unfortunately, the parent-facing nature of the tree pointers means we can't
+        # lazily produce an iterator
+        nodes = []
+        node = self.curr
+        while id(node) != id(self.root):
+            nodes.append(node.value)
+            node = node.parent
+        if self.root is not None:
+            nodes.append(self.root.value)
+        return reversed(nodes)
+
+    def __eq__(self, other):
+        if not isinstance(other, _ScopeTree):
+            return False
+        if self.root != other.root or self._len != other._len:
+            return False
+        return self.root == other.root and self.curr == other.curr
+
+    def __hash__(self):
+        return hash((self.root, self.curr))
+
+    def __getitem__(self, key):
+        if isinstance(key, slice):
+            indices = key.indices(len(self))
+            if len(indices) != 3:
+                raise KeyError(indices)
+            low, high, step = indices
+            if step != 1:
+                raise KeyError("_ScopeTree can only be indexed with slices with step 1")
+            if high == low:
+                return ScopeChain()
+            new_curr = self.curr
+            # High index is not inclusive
+            # If the slice ends on index 2 and the tree has length 3, we need to go up
+            # exactly 3 - 2 levels to reach index 1
+            for _ in range(self._len - high):
+                if new_curr is None or id(new_curr) == id(self.root):
+                    raise IndexError(indices)
+                new_curr = new_curr.parent
+            new_root = new_curr
+            # Low index is inclusive
+            # If the slice goes from [0:2], new_curr would have ended on element 1, so
+            # we need to do 2 - 0 - 1 iterations to get to the new root
+            for _ in range(high - low - 1):
+                if new_root is None or id(new_root) == id(self.root):
+                    raise IndexError(indices)
+                new_root = new_root.parent
+            new_tree = _ScopeTree()
+            new_tree.curr = new_curr
+            new_tree.root = new_root
+            new_tree._len = high - low
+            new_scopechain = ScopeChain()
+            new_scopechain.scopetree = new_tree
+            return new_scopechain
+        elif isinstance(key, int):
+            if key < -self._len or key >= self._len:
+                raise IndexError(key)
+            if key < 0:
+                key = self._len - key
+            # calculate when to stop iterating through the tree
+            # example: if curr is length 3 and we want to access index 2, we're already done
+            # because index 2 is the current node
+            # if curr is length 3 and we want to access index 1, we need to go up
+            # 3 - 2 + 1 = 1 levels in the tree
+            node = self.curr
+            for _ in range(self._len - key + 1):
+                if node is None or id(node) == id(self.root):
+                    raise IndexError(key)
+                node = node.parent
+            return node.value
+        else:
+            raise TypeError(key)
+
+
+    def append(self, label: ScopeLabel):
+        new_node = _ScopeTreeNode(label, self.curr)
+        if self.curr is None:
+            self.root = new_node
+        self.curr = new_node
+        self._len += 1
+
+    def extend(self, scopechain: "ScopeChain"):
+        for label in scopechain:
+            self.append(label)
 
 class ScopeChain(object):
     def __init__(self, scopechain=None):
         if scopechain is None:
-            self.scopenode = None
+            self.scopetree = _ScopeTree()
         elif isinstance(scopechain, ScopeChain):
-            self.scopenode = scopechain.scopenode
+            self.scopetree = _ScopeTree(scopechain.scopetree)
         elif isinstance(scopechain, list):
-            if len(scopechain) == 0:
-                self.scopenode = None
-            else:
-                first_label = scopechain[0]
-                self.scopenode = _ScopeTreeNode(first_label, None)
-                for label in scopechain[1:]:
-                    self.scopenode = _ScopeTreeNode(label, self.scopenode)
+            self.scopetree = _ScopeTree()
+            if len(scopechain) > 0:
+                for label in scopechain:
+                    self.scopetree.append(label)
         else:
             raise TypeError("cannot initialize ScopeChain from", scopechain)
 
     def __add__(self, r):
         new_chain = ScopeChain(self)
         if isinstance(r, ScopeLabel):
-            new_chain.scopenode = _ScopeTreeNode(r, new_chain.scopenode)
+            new_chain.scopetree.append(r)
         elif isinstance(r, ScopeChain):
-            for label in r:
-                new_chain.scopenode = _ScopeTreeNode(label, new_chain.scopenode)
+            new_chain.scopetree.extend(r)
         else:
             raise verror.DefinitionError('Can not add %s' % str(r))
         return new_chain
@@ -135,9 +225,7 @@ class ScopeChain(object):
     def tocode(self):
         ret = []
         it = None
-        if self.scopenode is None:
-            return ret
-        for scope in self.scopenode:
+        for scope in self.scopetree:
             l = scope.tocode()
             if l:
                 ret.append(l)
@@ -157,43 +245,32 @@ class ScopeChain(object):
         return ''.join(ret)
 
     def get_module_list(self):
-        return [scope for scope in self.scopenode if scope.scopetype == 'module']
+        return [scope for scope in self.scopetree if scope.scopetype == 'module']
 
     def __repr__(self):
         ret = ''
-        if self.scopenode is None:
-            return ret
-        for scope in self.scopenode:
+        for scope in self.scopetree:
             l = scope.__repr__()
             ret += l + '.'
         ret = ret[:-1]
         return ret
 
     def __len__(self):
-        if self.scopenode is None:
-            return 0
-        return len(self.scopenode)
+        return len(self.scopetree)
 
     def __eq__(self, other):
         if type(self) != type(other):
             return False
-        return self.scopenode == other.scopenode
+        return self.scopetree == other.scopetree
 
     def __ne__(self, other):
         return not self.__eq__(other)
 
     def __hash__(self):
-        return hash(self.scopenode)
+        return hash(self.scopetree)
 
     def __getitem__(self, key):
-        # TODO this algorithm can be optimized
-        scope_lst = list(iter(self.scopenode))
-        if isinstance(key, slice):
-            indices = key.indices(len(self))
-            return ScopeChain([scope_lst[x] for x in range(*indices)])
-        return scope_lst[key]
+        return self.scopetree[key]
 
     def __iter__(self):
-        if self.scopenode is None:
-            return iter(tuple())
-        return iter(self.scopenode)
+        return iter(self.scopetree)
