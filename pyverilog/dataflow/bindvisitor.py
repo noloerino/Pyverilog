@@ -29,6 +29,12 @@ import pyverilog.dataflow.replace as replace
 
 class BindVisitor(NodeVisitor):
     def __init__(self, moduleinfotable, top, frames, noreorder=False):
+        self._dftree_cache = defaultdict(dict) # Dict[Scope, Dict[Node, Term]]
+        """
+        Memoizes mappings of AST nodes to dataflow Term objects. Greatly improves performance.
+        (see makeDFTree for usage).
+        """
+
         self.moduleinfotable = moduleinfotable
         self.top = top
         self.frames = frames
@@ -49,13 +55,6 @@ class BindVisitor(NodeVisitor):
 
         self.renamecnt = 0
         self.default_nettype = 'wire'
-
-        self._dftree_cache = defaultdict(dict) # Dict[Scope, Dict[Node, Term]]
-        """
-        Memoizes mappings of AST nodes to dataflow Term objects. Greatly improves performance.
-        (see makeDFTree for usage).
-        """
-
 
     def getDataflows(self):
         return self.dataflow
