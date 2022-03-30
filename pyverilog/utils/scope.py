@@ -10,7 +10,6 @@ from __future__ import absolute_import
 from __future__ import print_function
 import sys
 import os
-import copy
 
 scopetype_list_unprint = ('generate', 'always', 'function',  # 'functioncall',
                           'task', 'taskcall', 'initial', 'for', 'while', 'if')
@@ -58,33 +57,80 @@ class ScopeLabel(object):
     def isPrintable(self):
         return self.scopetype in (scopetype_list_print + ('any',))
 
+class _ScopeTreeNode:
+    """
+    Represents a portion of a ScopeChain. This representation avoids the need to repeatedly
+    make deep copies of ScopeChains, which can become expensive.
+
+    For example, a ScopeChain representing the scope "top.sub.x" would be constructed by
+    pseudocode of the form Node("x", Node("sub", Node("top")))
+    """
+    def __init__(self, value: ScopeLabel, parent=None):
+        self.value = value
+        self.parent = parent # Parent _ScopeTreeNode
+        self._hash = None # memoized hash
+
+    def __iter__(self):
+        # Unfortunately, the parent-facing nature of the tree pointers means we can't
+        # lazily produce an iterator
+        nodes = []
+        node = self
+        while node is not None:
+            nodes.append(node.value)
+            node = node.parent
+        return reversed(nodes)
+
+    def __eq__(self, other):
+        if not isinstance(other, _ScopeTreeNode):
+            return False
+        if id(self) == id(other):
+            return True
+        p1 = self.parent
+        p2 = other.parent
+        if p1 is None and p2 is None:
+            return self.value == other.value
+        return self.value == other.value and p1 == p2
+
+    def __hash__(self):
+        if self._hash is not None:
+            return self._hash
+        self._hash = hash((self.parent, self.value))
+        return self._hash
 
 class ScopeChain(object):
     def __init__(self, scopechain=None):
-        self.scopechain = []
-        if scopechain is not None:
-            self.scopechain = scopechain
+        if scopechain is None:
+            self.scopenode = None
+        elif isinstance(scopechain, ScopeChain):
+            self.scopenode = scopechain.scopenode
+        elif isinstance(scopechain, list):
+            if len(scopechain) == 0:
+                self.scopenode = None
+            else:
+                first_label = scopechain[0]
+                self.scopenode = _ScopeTreeNode(first_label, None)
+                for label in scopechain[1:]:
+                    self.scopenode = _ScopeTreeNode(label, self.scopenode)
+        else:
+            raise TypeError("cannot initialize ScopeChain from", scopechain)
 
     def __add__(self, r):
-        new_chain = copy.deepcopy(self)
+        new_chain = ScopeChain(self)
         if isinstance(r, ScopeLabel):
-            new_chain.append(r)
+            new_chain.scopenode = _ScopeTreeNode(r, new_chain.scopenode)
         elif isinstance(r, ScopeChain):
-            new_chain.extend(r.scopechain)
+            for label in r:
+                new_chain.scopenode = _ScopeTreeNode(r, new_chain.scopenode)
         else:
             raise verror.DefinitionError('Can not add %s' % str(r))
         return new_chain
 
-    def append(self, r):
-        self.scopechain.append(r)
-
-    def extend(self, r):
-        self.scopechain.extend(r)
-
     def tocode(self):
         ret = []
         it = None
-        for scope in self.scopechain:
+        if self.scopenode is None:
+            return ret
+        for scope in self.scopenode:
             l = scope.tocode()
             if l:
                 ret.append(l)
@@ -104,36 +150,43 @@ class ScopeChain(object):
         return ''.join(ret)
 
     def get_module_list(self):
-        return [scope for scope in self.scopechain if scope.scopetype == 'module']
+        return [scope for scope in self.scopenode if scope.scopetype == 'module']
 
     def __repr__(self):
         ret = ''
-        for scope in self.scopechain:
+        if self.scopenode is None:
+            return ret
+        for scope in self.scopenode:
             l = scope.__repr__()
             ret += l + '.'
         ret = ret[:-1]
         return ret
 
     def __len__(self):
-        return len(self.scopechain)
+        if self.scopenode is None:
+            return 0
+        return len(list(iter(self.scopenode)))
 
     def __eq__(self, other):
         if type(self) != type(other):
             return False
-        return self.scopechain == other.scopechain
+        return self.scopenode == other.scopenode
 
     def __ne__(self, other):
         return not self.__eq__(other)
 
     def __hash__(self):
-        return hash(tuple(self.scopechain))
+        return hash(self.scopenode)
 
     def __getitem__(self, key):
+        # TODO this algorithm can be optimized
+        scope_lst = list(iter(self.scopenode))
         if isinstance(key, slice):
             indices = key.indices(len(self))
-            return ScopeChain([self.scopechain[x] for x in range(*indices)])
-        return self.scopechain[key]
+            return ScopeChain([scope_lst[x] for x in range(*indices)])
+        return scope_lst[key]
 
     def __iter__(self):
-        for scope in self.scopechain:
-            yield scope
+        if self.scopenode is None:
+            return iter(tuple())
+        return iter(self.scopenode)
