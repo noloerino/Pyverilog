@@ -120,7 +120,7 @@ class ScopeChain(object):
             new_chain.scopenode = _ScopeTreeNode(r, new_chain.scopenode)
         elif isinstance(r, ScopeChain):
             for label in r:
-                new_chain.scopenode = _ScopeTreeNode(r, new_chain.scopenode)
+                new_chain.scopenode = _ScopeTreeNode(label, new_chain.scopenode)
         else:
             raise verror.DefinitionError('Can not add %s' % str(r))
         return new_chain
