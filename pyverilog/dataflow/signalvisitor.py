@@ -239,41 +239,39 @@ class SignalVisitor(NodeVisitor):
         return self.visit_CaseStatement(node)
 
     def _case(self, comp, caselist):
-        if len(caselist) == 0:
-            return
-        case = caselist[0]
-        cond = IntConst('1')
-        if case.cond is not None:
-            if len(case.cond) > 1:
-                cond = Eq(comp, case.cond[0])
-                for c in case.cond[1:]:
-                    cond = Lor(cond, Eq(comp, c))
-            else:
-                cond = Eq(comp, case.cond[0])
-        label = self.labels.get(self.frames.getLabelKey('if'))
-        current = self.frames.addFrame(ScopeLabel(label, 'if'),
-                                       frametype='ifthen',
-                                       condition=cond,
-                                       functioncall=self.frames.isFunctioncall(),
-                                       taskcall=self.frames.isTaskcall(),
-                                       generate=self.frames.isGenerate(),
-                                       always=self.frames.isAlways(),
-                                       initial=self.frames.isInitial())
-        if case.statement is not None:
-            self.visit(case.statement)
-        self.frames.setCurrent(current)
-        if len(caselist) == 1:
-            return
-        label = self._toELSE(label)
-        current = self.frames.addFrame(ScopeLabel(label, 'if'),
-                                       frametype='ifelse',
-                                       condition=cond,
-                                       functioncall=self.frames.isFunctioncall(),
-                                       taskcall=self.frames.isTaskcall(),
-                                       generate=self.frames.isGenerate(),
-                                       always=self.frames.isAlways(),
-                                       initial=self.frames.isInitial())
-        self._case(comp, caselist[1:])
+        case_count = len(caselist)
+        for i, case in enumerate(caselist):
+            cond = IntConst('1')
+            if case.cond is not None:
+                if len(case.cond) > 1:
+                    cond = Eq(comp, case.cond[0])
+                    for c in case.cond[1:]:
+                        cond = Lor(cond, Eq(comp, c))
+                else:
+                    cond = Eq(comp, case.cond[0])
+            label = self.labels.get(self.frames.getLabelKey('if'))
+            current = self.frames.addFrame(ScopeLabel(label, 'if'),
+                                           frametype='ifthen',
+                                           condition=cond,
+                                           functioncall=self.frames.isFunctioncall(),
+                                           taskcall=self.frames.isTaskcall(),
+                                           generate=self.frames.isGenerate(),
+                                           always=self.frames.isAlways(),
+                                           initial=self.frames.isInitial())
+            if case.statement is not None:
+                self.visit(case.statement)
+            self.frames.setCurrent(current)
+            if i == case_count - 1:
+                break
+            label = self._toELSE(label)
+            current = self.frames.addFrame(ScopeLabel(label, 'if'),
+                                           frametype='ifelse',
+                                           condition=cond,
+                                           functioncall=self.frames.isFunctioncall(),
+                                           taskcall=self.frames.isTaskcall(),
+                                           generate=self.frames.isGenerate(),
+                                           always=self.frames.isAlways(),
+                                           initial=self.frames.isInitial())
 
     def visit_ForStatement(self, node):
         # pre-statement
