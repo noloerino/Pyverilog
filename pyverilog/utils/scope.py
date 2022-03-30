@@ -69,6 +69,13 @@ class _ScopeTreeNode:
         self.value = value
         self.parent = parent # Parent _ScopeTreeNode
         self._hash = None # memoized hash
+        if parent is None:
+            self._len = 1
+        else:
+            self._len = len(parent) + 1
+
+    def __len__(self):
+        return self._len
 
     def __iter__(self):
         # Unfortunately, the parent-facing nature of the tree pointers means we can't
@@ -165,7 +172,7 @@ class ScopeChain(object):
     def __len__(self):
         if self.scopenode is None:
             return 0
-        return len(list(iter(self.scopenode)))
+        return len(self.scopenode)
 
     def __eq__(self, other):
         if type(self) != type(other):
