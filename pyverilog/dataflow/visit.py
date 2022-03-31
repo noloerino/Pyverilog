@@ -238,7 +238,7 @@ class DefinitionInfo(object):
     def addPorts(self, ports):
         for p in ports:
             if isinstance(p, Ioport):
-                self.ioports.append(p.first)
+                self.ioports.append(p.first.name)
             else:
                 self.ioports.append(p.name)
 

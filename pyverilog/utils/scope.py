@@ -176,9 +176,9 @@ class _ScopeTree:
             # example: if curr is length 3 and we want to access index 2, we're already done
             # because index 2 is the current node
             # if curr is length 3 and we want to access index 1, we need to go up
-            # 3 - 2 + 1 = 1 levels in the tree
+            # 3 - 1 - 1 = 1 levels in the tree
             node = self.curr
-            for _ in range(self._len - key + 1):
+            for _ in range(self._len - key - 1):
                 if node is None or id(node) == id(self.root):
                     raise IndexError(key)
                 node = node.parent

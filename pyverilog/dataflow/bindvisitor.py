@@ -185,8 +185,8 @@ class BindVisitor(NodeVisitor):
         ioports = self.moduleinfotable.getIOPorts(node.module)
         for ioport_i, port in enumerate(node.portlist):
             if port.portname is not None and not (port.portname in ioports):
-                raise verror.FormatError("No such port: %s in %s" %
-                                         (port.argname.name, nodename))
+                raise verror.FormatError("No such port: %s (assigned with %s) in %s" %
+                                         (port.portname, port.argname, nodename))
             self.addInstancePortBind(port, ioports[ioport_i], arrayindex)
 
         new_current = self.frames.getCurrent()

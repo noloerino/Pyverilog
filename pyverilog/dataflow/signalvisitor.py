@@ -90,11 +90,11 @@ class SignalVisitor(NodeVisitor):
         self.frames.unsetFunctionDef()
 
     def visit_Portlist(self, node):
-        if not self.frames.isFunctiondef():
-            # Assume this is a module port list definition, which will be taken are of
-            # by the ModuleVisitor class
-            return
-        self.frames.addFunctionPorts(node.ports)
+        if self.frames.isFunctiondef():
+            self.frames.addFunctionPorts(node.ports)
+        for c in node.children():
+            self.visit(c)
+        return
 
     def visit_Task(self, node):
         self.frames.addTask(node)
