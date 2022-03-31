@@ -124,6 +124,9 @@ class _ScopeTree:
             nodes.append(self.root.value)
         return reversed(nodes)
 
+    def __str__(self):
+        return ".".join(repr(a) for a in self)
+
     def __eq__(self, other):
         if not isinstance(other, _ScopeTree):
             return False
@@ -171,10 +174,11 @@ class _ScopeTree:
             if key < -self._len or key >= self._len:
                 raise IndexError(key)
             if key < 0:
-                key = self._len - key
+                # e.g. if we're length 4 and we need to access index -1, that's index 3
+                key = self._len + key
             # calculate when to stop iterating through the tree
             # example: if curr is length 3 and we want to access index 2, we're already done
-            # because index 2 is the current node
+            # because index 2 is the current node (3 - 2 - 1 = 0)
             # if curr is length 3 and we want to access index 1, we need to go up
             # 3 - 1 - 1 = 1 levels in the tree
             node = self.curr
