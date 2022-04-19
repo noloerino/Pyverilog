@@ -1,3 +1,6 @@
 *.pyc
 *.out
 parsetab.py
+*.pytest_cache
+*.egg-info
+*.swp
