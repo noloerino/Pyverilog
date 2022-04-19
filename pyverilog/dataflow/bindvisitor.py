@@ -1110,7 +1110,7 @@ class BindVisitor(NodeVisitor):
             funcargs = node.args
 
             if len(funcports) != len(funcargs):
-                raise verror.FormatError("%s takes exactly %d arguments. (%d given)" %
+                raise verror.FormatError("function %s takes exactly %d arguments. (%d given)" %
                                          (func.name.name, len(funcports), len(funcargs)))
             for port in funcports:
                 self.addTerm(Wire(port.name, port.width))

@@ -90,8 +90,6 @@ class SignalVisitor(NodeVisitor):
         self.frames.unsetFunctionDef()
 
     def visit_Portlist(self, node):
-        if self.frames.isFunctiondef():
-            self.frames.addFunctionPorts(node.ports)
         for c in node.children():
             self.visit(c)
         return
