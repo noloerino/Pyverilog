@@ -287,6 +287,8 @@ class BindVisitor(NodeVisitor):
         return (clock_name, clock_edge, clock_bit, reset_name, reset_edge, reset_bit, senslist)
 
     def visit_IfStatement(self, node):
+        if self.frames.isFunctiondef() and not self.frames.isFunctioncall():
+            return
         if self.frames.isTaskdef() and not self.frames.isTaskcall():
             return
 
@@ -366,6 +368,8 @@ class BindVisitor(NodeVisitor):
         return label
 
     def visit_CaseStatement(self, node):
+        if self.frames.isFunctiondef() and not self.frames.isFunctioncall():
+            return
         if self.frames.isTaskdef() and not self.frames.isTaskcall():
             return
         start_frame = self.frames.getCurrent()
@@ -426,6 +430,8 @@ class BindVisitor(NodeVisitor):
             myframes.append(current + ScopeLabel(label, 'if'))
 
     def visit_ForStatement(self, node):
+        if self.frames.isFunctiondef() and not self.frames.isFunctioncall():
+            return
         if self.frames.isTaskdef() and not self.frames.isTaskcall():
             return
 
@@ -477,6 +483,8 @@ class BindVisitor(NodeVisitor):
             #loop += 1
 
     def visit_WhileStatement(self, node):
+        if self.frames.isFunctiondef() and not self.frames.isFunctioncall():
+            return
         if self.frames.isTaskdef() and not self.frames.isTaskcall():
             return
         label = self.labels.get(self.frames.getLabelKey('while'))
@@ -842,6 +850,8 @@ class BindVisitor(NodeVisitor):
         return Term(name, termtypes, msb, lsb)
 
     def addTerm(self, node, rscope=None):
+        if self.frames.isFunctiondef() and not self.frames.isFunctioncall():
+            return
         if self.frames.isTaskdef() and not self.frames.isTaskcall():
             return
         scope = self.frames.getCurrent() if rscope is None else rscope
@@ -873,6 +883,8 @@ class BindVisitor(NodeVisitor):
         self.setConstantTerm(name, term)
 
     def addBind(self, left, right, alwaysinfo=None, bindtype=None):
+        if self.frames.isFunctiondef() and not self.frames.isFunctioncall():
+            return
         if self.frames.isTaskdef() and not self.frames.isTaskcall():
             return
         lscope = self.frames.getCurrent()
