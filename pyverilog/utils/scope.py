@@ -101,11 +101,13 @@ class _ScopeTree:
             self.curr = None
             self._len = 0
             self._str = ""
+            self._hash = hash("")
         else:
             self.root = scopetree.root
             self.curr = scopetree.curr
             self._len = scopetree._len
             self._str = scopetree._str
+            self._hash = scopetree._hash
 
     def copy(self):
         return _ScopeTree(self)
@@ -118,7 +120,8 @@ class _ScopeTree:
         # lazily produce an iterator
         nodes = []
         node = self.curr
-        while id(node) != id(self.root):
+        root_id = id(self.root)
+        while id(node) != root_id:
             nodes.append(node.value)
             node = node.parent
         if self.root is not None:
@@ -137,7 +140,7 @@ class _ScopeTree:
         return str(self) == str(other)
 
     def __hash__(self):
-        return hash(self._str)
+        return self._hash
 
     def __getitem__(self, key):
         if isinstance(key, slice):
@@ -173,6 +176,7 @@ class _ScopeTree:
             new_tree.root = new_root
             new_tree._len = high - low
             new_tree._str = new_str
+            new_tree._hash = hash(new_str)
             new_scopechain = ScopeChain()
             new_scopechain.scopetree = new_tree
             return new_scopechain
@@ -206,10 +210,11 @@ class _ScopeTree:
         tree._len -= 1
         # Remove period + most specific scope
         tree._str = tree._str[:-(len(repr(self.curr.value)) + 1)]
+        tree._hash = hash(tree._str)
         assert tree._str != ""
         return tree
 
-    def append(self, label: ScopeLabel):
+    def append(self, label: ScopeLabel, *, _rehash=True):
         new_node = _ScopeTreeNode(label, self.curr)
         if self.curr is None:
             self.root = new_node
@@ -219,10 +224,13 @@ class _ScopeTree:
             self._str += "." + repr(label)
         self.curr = new_node
         self._len += 1
+        if _rehash:
+            self._hash = hash(self._str)
 
     def extend(self, scopechain: "ScopeChain"):
         for label in scopechain:
-            self.append(label)
+            self.append(label, _rehash=False)
+        self._hash = hash(self._str)
 
 class ScopeChain(object):
     def __init__(self, scopechain=None):

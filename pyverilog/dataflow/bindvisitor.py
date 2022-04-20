@@ -817,7 +817,6 @@ class BindVisitor(NodeVisitor):
                 return self.dataflow.getTask(varname)
             if self.frames.dict[scope].isModule():
                 return None
-            return self.searchTask(name, scope[:-1])
         return None
 
     def searchFunctionPorts(self, name, scope):
@@ -1171,11 +1170,15 @@ class BindVisitor(NodeVisitor):
                                  (str(type(node)), str(node)))
 
     def reduceIfScope(self, scope):
-        if len(scope) == 0:
-            return scope
-        if scope[-1].scopetype == 'if':
-            return scope[:-1]
-        return self.reduceIfScope(scope[:-1])
+        # Turning the iter into a list and indexing the next element
+        # has a nontrivial perf impact
+        return_now = False
+        for scope in scope.less_qual_iter():
+            if return_now or len(scope) == 0:
+                return scope
+            if scope[-1].scopetype == 'if':
+                return_now = True
+        return ScopeChain()
 
     def resolveCondlist(self, condlist, scope):
         resolved_condlist = []
