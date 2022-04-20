@@ -792,55 +792,51 @@ class BindVisitor(NodeVisitor):
         return const
 
     def searchTerminal(self, name, scope):
-        if len(scope) == 0:
-            return None
-        varname = scope + ScopeLabel(name, 'signal')
-        if self.dataflow.hasTerm(varname):
-            return varname
-        if self.frames.dict[scope].isModule():
-            return None
-        # if self.frames.dict[scope].isFunctioncall(): return None
-        return self.searchTerminal(name, scope[:-1])
+        # Traverse scopes from most qualified ("a.b.c") to least qualified ("")
+        for scope in scope.less_qual_iter():
+            varname = scope + ScopeLabel(name, 'signal')
+            if self.dataflow.hasTerm(varname):
+                return varname
+            if self.frames.dict[scope].isModule():
+                return None
+        return None
 
     def searchFunction(self, name, scope):
-        if len(scope) == 0:
-            return None
-        varname = scope + ScopeLabel(name, 'function')
-        if self.dataflow.hasFunction(varname):
-            return self.dataflow.getFunction(varname)
-        if self.frames.dict[scope].isModule():
-            return None
-        return self.searchFunction(name, scope[:-1])
+        for scope in scope.less_qual_iter():
+            varname = scope + ScopeLabel(name, 'function')
+            if self.dataflow.hasFunction(varname):
+                return self.dataflow.getFunction(varname)
+            if self.frames.dict[scope].isModule():
+                return None
+        return None
 
     def searchTask(self, name, scope):
-        if len(scope) == 0:
-            return None
-        varname = scope + ScopeLabel(name, 'task')
-        if self.dataflow.hasTask(varname):
-            return self.dataflow.getTask(varname)
-        if self.frames.dict[scope].isModule():
-            return None
-        return self.searchTask(name, scope[:-1])
+        for scope in scope.less_qual_iter():
+            varname = scope + ScopeLabel(name, 'task')
+            if self.dataflow.hasTask(varname):
+                return self.dataflow.getTask(varname)
+            if self.frames.dict[scope].isModule():
+                return None
+            return self.searchTask(name, scope[:-1])
+        return None
 
     def searchFunctionPorts(self, name, scope):
-        if len(scope) == 0:
-            return ()
-        varname = scope + ScopeLabel(name, 'function')
-        if self.dataflow.hasFunction(varname):
-            return self.dataflow.getFunctionPorts(varname)
-        if self.frames.dict[scope].isModule():
-            return ()
-        return self.searchFunctionPorts(name, scope[:-1])
+        for scope in scope.less_qual_iter():
+            varname = scope + ScopeLabel(name, 'function')
+            if self.dataflow.hasFunction(varname):
+                return self.dataflow.getFunctionPorts(varname)
+            if self.frames.dict[scope].isModule():
+                return ()
+        return ()
 
     def searchTaskPorts(self, name, scope):
-        if len(scope) == 0:
-            return ()
-        varname = scope + ScopeLabel(name, 'task')
-        if self.dataflow.hasTask(varname):
-            return self.dataflow.getTaskPorts(varname)
-        if self.frames.dict[scope].isModule():
-            return ()
-        return self.searchTaskPorts(name, scope[:-1])
+        for scope in scope.less_qual_iter():
+            varname = scope + ScopeLabel(name, 'task')
+            if self.dataflow.hasTask(varname):
+                return self.dataflow.getTaskPorts(varname)
+            if self.frames.dict[scope].isModule():
+                return ()
+        return ()
 
     def makeConstantTerm(self, name, node, scope):
         termtype = node.__class__.__name__

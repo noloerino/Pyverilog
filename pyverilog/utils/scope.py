@@ -69,14 +69,12 @@ class _ScopeTreeNode:
         self.value = value
         self.parent = parent # Parent _ScopeTreeNode
         if parent is None:
-            self._hash = hash(value)
             self._len = 1
         else:
-            self._hash = hash((parent._hash, value))
             self._len = parent._len + 1
 
     def __eq__(self, other):
-        if not isinstance(other, _ScopeTreeNode) or self._len != other._len or self._hash != other._hash:
+        if not isinstance(other, _ScopeTreeNode) or self._len != other._len:
             return False
         if id(self) == id(other):
             return True
@@ -86,8 +84,6 @@ class _ScopeTreeNode:
             return self.value == other.value
         return self.value == other.value and p1 == p2
 
-    def __hash__(self):
-        return self._hash
 
 class _ScopeTree:
     """
@@ -104,10 +100,15 @@ class _ScopeTree:
             self.root = None
             self.curr = None
             self._len = 0
+            self._str = ""
         else:
             self.root = scopetree.root
             self.curr = scopetree.curr
             self._len = scopetree._len
+            self._str = scopetree._str
+
+    def copy(self):
+        return _ScopeTree(self)
 
     def __len__(self):
         return self._len
@@ -125,17 +126,18 @@ class _ScopeTree:
         return reversed(nodes)
 
     def __str__(self):
-        return ".".join(repr(a) for a in self)
+        return self._str
 
     def __eq__(self, other):
         if not isinstance(other, _ScopeTree):
             return False
         if self.root != other.root or self._len != other._len:
             return False
-        return self.root == other.root and self.curr == other.curr
+        # This is more efficient than checking equality on root and curr
+        return str(self) == str(other)
 
     def __hash__(self):
-        return hash((self.root, self.curr))
+        return hash(self._str)
 
     def __getitem__(self, key):
         if isinstance(key, slice):
@@ -159,14 +161,18 @@ class _ScopeTree:
             # Low index is inclusive
             # If the slice goes from [0:2], new_curr would have ended on element 1, so
             # we need to do 2 - 0 - 1 iterations to get to the new root
+            new_str = ""
             for _ in range(high - low - 1):
                 if new_root is None or id(new_root) == id(self.root):
                     raise IndexError(indices)
+                new_str = "." + repr(new_root.value) + new_str
                 new_root = new_root.parent
+            new_str = repr(new_root.value) + new_str
             new_tree = _ScopeTree()
             new_tree.curr = new_curr
             new_tree.root = new_root
             new_tree._len = high - low
+            new_tree._str = new_str
             new_scopechain = ScopeChain()
             new_scopechain.scopetree = new_tree
             return new_scopechain
@@ -190,11 +196,27 @@ class _ScopeTree:
         else:
             raise TypeError(key)
 
+    def _new_pop(self) -> "_ScopeTree":
+        """
+        Returns a new _ScopeTree with one fewer scope. CANNOT BE CALLED ON A LENGTH 1 CHAIN.
+        """
+        assert id(self.curr) != id(self.root), "attempted to pop length 1 _ScopeTree"
+        tree = self.copy()
+        tree.curr = tree.curr.parent
+        tree._len -= 1
+        # Remove period + most specific scope
+        tree._str = tree._str[:-(len(repr(self.curr.value)) + 1)]
+        assert tree._str != ""
+        return tree
 
     def append(self, label: ScopeLabel):
         new_node = _ScopeTreeNode(label, self.curr)
         if self.curr is None:
             self.root = new_node
+            self._str = repr(label)
+        else:
+            assert self._str != ""
+            self._str += "." + repr(label)
         self.curr = new_node
         self._len += 1
 
@@ -207,7 +229,9 @@ class ScopeChain(object):
         if scopechain is None:
             self.scopetree = _ScopeTree()
         elif isinstance(scopechain, ScopeChain):
-            self.scopetree = _ScopeTree(scopechain.scopetree)
+            self.scopetree = scopechain.scopetree.copy()
+        elif isinstance(scopechain, _ScopeTree):
+            self.scopetree = scopechain.copy()
         elif isinstance(scopechain, list):
             self.scopetree = _ScopeTree()
             if len(scopechain) > 0:
@@ -278,3 +302,19 @@ class ScopeChain(object):
 
     def __iter__(self):
         return iter(self.scopetree)
+
+    def less_qual_iter(self):
+        """
+        Returns an iterator of ScopeChains, where each element becomes a less specific scope.
+        For example, if this scope is "a.b.c", this iterator would yield labels for
+        ["a.b.c", "a.b", "a", ""]
+        """
+        tmp_tree = self.scopetree.copy()
+        root_id = id(tmp_tree.root)
+        while id(tmp_tree.curr) != root_id:
+            yield ScopeChain(tmp_tree)
+            # Make a copy to avoid ownership issues
+            tmp_tree = tmp_tree._new_pop()
+        assert len(tmp_tree) == 1, f"_ScopeTree {tmp_tree} was not length 1 at end of iterator (was {len(tmp_tree)})"
+        yield ScopeChain(tmp_tree)
+        yield ScopeChain()
