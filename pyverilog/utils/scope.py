@@ -152,6 +152,9 @@ class _ScopeTree:
                 raise KeyError("_ScopeTree can only be indexed with slices with step 1")
             if high == low:
                 return ScopeChain()
+            if low == 0 and high - low == self._len - 1:
+                # Special case for scope[:-1]
+                return ScopeChain(self._new_pop())
             new_curr = self.curr
             # High index is not inclusive
             # If the slice ends on index 2 and the tree has length 3, we need to go up
@@ -211,7 +214,6 @@ class _ScopeTree:
         # Remove period + most specific scope
         tree._str = tree._str[:-(len(repr(self.curr.value)) + 1)]
         tree._hash = hash(tree._str)
-        assert tree._str != ""
         return tree
 
     def append(self, label: ScopeLabel, *, _rehash=True):
@@ -220,7 +222,6 @@ class _ScopeTree:
             self.root = new_node
             self._str = repr(label)
         else:
-            assert self._str != ""
             self._str += "." + repr(label)
         self.curr = new_node
         self._len += 1
