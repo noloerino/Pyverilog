@@ -1331,7 +1331,7 @@ class BindVisitor(NodeVisitor):
     def getDsts(self, left, scope):
         if isinstance(left, Lvalue):
             return self.getDsts(left.var, scope)
-        if isinstance(left, LConcat):
+        if isinstance(left, Concat): # Also covers LConcat
             dst = []
             for n in left.list:
                 dst.extend(list(self.getDsts(n, scope)))
